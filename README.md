@@ -26,20 +26,22 @@ The original audio is not published because it is a local/internal file. This re
 
 ## 2. Transcription accuracy
 
-| Model | Strict CER | Content CER |
-| --- | ---: | ---: |
-| Qwen3-ASR-1.7B | 21.1817% | 3.8724% |
-| Pathumma | **8.5842%** | 2.8474% |
-| Typhoon | 18.3946% | **0.3417%** |
+| Model | Strict CER | Content errors / 884 | Content CER |
+| --- | ---: | ---: | ---: |
+| Qwen3-ASR-1.7B | 21.1817% | 34 | 3.8462% |
+| Pathumma | **8.5842%** | 25 | 2.8281% |
+| Typhoon | 18.3946% | **3** | **0.3394%** |
 
 Score definitions:
 
 - **Strict CER** requires every character to match the reference, including number representation (`397` versus `สามร้อยเก้าสิบเจ็ด`), abbreviations, punctuation, and the closing tag.
-- **Content CER** measures spoken content. The same clip-specific normalization is applied to every model: Thai number words are converted to the corresponding Arabic values in the reference, thousands separators are removed, `ํา` and `ำ` are treated as equivalent, and the closing tag `7HD TV เพื่อคุณ` is excluded.
+- **Content CER** measures spoken content. The same grammar-based normalization is applied to every model: Thai number words are converted to canonical Arabic values, thousands separators are removed, `ํา` and `ำ` are treated as equivalent, and the closing tag `7HD TV เพื่อคุณ` is excluded.
+
+The Content CER column was re-run with the general parser in [`content_cer.py`](content_cer.py). It canonicalizes expressions such as `สามร้อยเก้าสิบเจ็ดล้าน` and `397ล้าน` to the same numeric value (`397000000`), so the canonical reference is 884 characters and the percentages differ slightly from the earlier phrase-map-only score. Strict CER is unchanged.
 
 ### Reproduce Strict CER and Content CER
 
-[`content_cer.py`](content_cer.py) is a dependency-free CLI example that calculates both scores from UTF-8 reference and hypothesis files. It performs Strict CER first, then applies declared Content CER transformations. The built-in number map contains only forms observed in this test clip, so extend it with `--number-map-json` for another domain.
+[`content_cer.py`](content_cer.py) is a dependency-free CLI example that calculates both scores from UTF-8 reference and hypothesis files. It performs Strict CER first, then applies declared Content CER transformations. Its Thai-number function is grammar-based rather than a fixed phrase map: it supports Thai cardinal numbers from `สิบเอ็ด` through `ห้าล้านสี่แสน`, Thai digits, and mixed forms such as `5ล้าน4แสน`.
 
 ```bash
 python content_cer.py \
@@ -49,7 +51,7 @@ python content_cer.py \
   --show-normalized
 ```
 
-For a hypothesis that has an extra spoken sign-off, add (for example) `--hypothesis-suffix "โอ้โห"`. The program prints JSON with `strict_cer`, `content_cer`, and the exact rules used. Preserve the raw transcript separately; do not silently apply number conversion in production.
+For a hypothesis that has an extra spoken sign-off, add (for example) `--hypothesis-suffix "โอ้โห"`. The program prints JSON with `strict_cer`, `content_cer`, and the exact rules used. To avoid converting non-numeric Thai words such as `ศูนย์` in `ศูนย์ต่อต้าน`, an isolated unit word is converted only in a count/date context; phrases with `สิบ`, `ร้อย`, `พัน`, `หมื่น`, `แสน`, or `ล้าน` are parsed directly. Preserve the raw transcript separately; do not silently apply number conversion in production.
 
 ## 3. CUDA cold model start time
 
@@ -65,9 +67,9 @@ All models use the same timing definition: a new Python process, no target model
 
 ## 4. Decision summary
 
-For this sample, Typhoon is the preferred Local AI option when the goal is accurate Thai news content with low startup and inference time: **0.3417% Content CER** and **5.61 seconds total cold start**.
+For this sample, Typhoon is the preferred Local AI option when the goal is accurate Thai news content with low startup and inference time: **0.3394% Content CER** and **5.61 seconds total cold start**.
 
-Typhoon's higher Strict CER (**18.3946%**) does not necessarily mean that it misheard the content. In this sample, it returns spoken numbers as **Thai number words**, for example `สามร้อยเก้าสิบเจ็ด` rather than `397`—not Thai digits `๓๙๗`—and it omits the closing tag. After the number-word representation is normalized to the Arabic form used by the reference, its Content CER is 0.3417%.
+Typhoon's higher Strict CER (**18.3946%**) does not necessarily mean that it misheard the content. In this sample, it returns spoken numbers as **Thai number words**, for example `สามร้อยเก้าสิบเจ็ด` rather than `397`—not Thai digits `๓๙๗`—and it omits the closing tag. After grammar-based number normalization, its Content CER is 0.3394%.
 
 Recommended implementation approach:
 
@@ -89,15 +91,15 @@ The Thai text below is intentionally kept unchanged because it is the gold refer
 >
 > 7HD TV เพื่อคุณ
 
-### Pathumma — Strict CER 8.5842%, Content CER 2.8474%
+### Pathumma — Strict CER 8.5842%, Content CER 2.8281%
 
 > ศูนย์ต่อต้านการฉ้อโกงออนไลน์นะคะส่งข้อมูลให้ตำรวจตามจับ<mark>กลุ่ม</mark> 🟥วัยรุ่นค่ะที่มีการถอนเงินหน้าธนาคารเพื่อส่งไปให้บัญชีม้านะคะขณะที่ภาพรวมตลอดทั้งสัปดาห์มีคนถูกหลอกโอนเงินรวมความเสียหายกว่า🔷สามร้อยเก้าสิบเจ็ด🔷ล้านบาทนี่เป็นหนึ่งในคดีที่ศูนย์ต่อต้านการฉ้อโกงออนไลน์ประสานตำรวจในพื้นที่<mark>สพ</mark> 🟥เชียงดาวจังหวัดเชียงใหม่จับ<mark>กลุ่ม</mark> 🟥วัยรุ่นชายอายุ🔷สิบเจ็ด🔷และ🔷สิบเก้า🔷ปีหลังรับงานกดเงินสดถอนเงินให้กับแก๊งสแกมเมอร์จากธนาคารแห่งหนึ่งเบื้องต้นพบของกลางเงินสด150,000บาทสมุดบัญชีธนาคารบัตร🔷เอทีเอ็ม🔷และโทรศัพท์มือถือ2เครื่องสอบถามผู้ต้องหารับว่าได้รับงานกดถอนเงินให้กับชายวัยรุ่นอีกคนอายุ19ปีซึ่งก่อนหน้านี้ก็เพิ่งไปถอนเงินสด100,000บาทจากพื้นที่<mark>สพนาวาย</mark> 🟥ให้ไป<mark>แล้ว</mark> 🟥กับค่าตอบแทน5,000บาทขณะที่ภาพรวมมีการ<mark>กลุ่ม</mark> 🟥ผู้ต้องหารวม11คดี<mark>ยืด</mark> 🟥ของกลางเงินสดได้รวมกว่า🔷5ล้าน4แสน🔷บาทขณะที่ภาพรวมวันที่5ถึง11เมษายนที่ผ่านมาพบว่ามีผู้เสียหายแจ้งความผ่านระบบออนไลน์รวมกว่า7,300คดีความเสียหายรวมกว่า397ล้านบาทในจำนวนนี้เป็นคดีหลอกลงทุนสร้างความเสียหายมากที่สุดรวมกว่า213ล้านบาท<mark>โอ้โห</mark> 🟥
 
-### Qwen3-ASR-1.7B — Strict CER 21.1817%, Content CER 3.8724%
+### Qwen3-ASR-1.7B — Strict CER 21.1817%, Content CER 3.8462%
 
 > ศูนย์ต่อต้านการ<mark>ช้อกง</mark> 🟥ออนไลน์นะคะส่งข้อมูลให้ตำรวจตามจับ<mark>กลุ่ม</mark> 🟥วัยรุ่นค่ะที่มีการถอนเงินหน้าธนาคารเพื่อส่งไปให้บัญชีม้านะคะขณะที่ภาพรวมตลอดทั้งสัปดาห์มีคนถูกหลอกโอนเงินรวมความเสียหายกว่า🔷สามร้อยเก้าสิบเจ็ด🔷ล้านบาทนี่เป็นหนึ่งในคดีที่ศูนย์ต่อต้านการ<mark>ช้อกง</mark> 🟥ออนไลน์ประสานตำรวจในพื้นที่<mark>สพ</mark> 🟥เชียงดาวจังหวัดเชียงใหม่จับ<mark>กลุ่ม</mark> 🟥วัยรุ่นชายอายุ🔷สิบเจ็ด🔷และ🔷สิบเก้า🔷ปี<mark>ลัง</mark> 🟥รับงาน<mark>โกรธ</mark> 🟥เงินสดถอนเงินให้กับแก๊งสแกมเมอร์จากธนาคารแห่งหนึ่งเบื้องต้นพบของกลางเงินสด🔷หนึ่งแสนห้าหมื่น🔷บาทสมุดบัญชีธนาคารบัตร🔷เอทีเอ็ม🔷และโทรศัพท์มือถือ🔷สอง🔷เครื่องสอบถามผู้ต้องหารับว่าได้รับงาน<mark>โกรธ</mark> 🟥ถอนเงินให้กับชายวัยรุ่นอีกคนอายุ🔷สิบเก้า🔷ปีซึ่งก่อนหน้านี้ก็<mark>พึ่ง</mark> 🟥ไปถอนเงินสด🔷หนึ่งแสนบาทจากพื้นที่<mark>สพนวาย</mark> 🟥ให้ไปแลกกับค่าตอบแทน🔷ห้าพัน🔷บาทขณะที่ภาพรวมมีการจับ<mark>กลุ่ม</mark> 🟥ผู้ต้องหารวม🔷สิบเอ็ด🔷คดียึดของกลางเงินสดได้รวมกว่า🔷ห้าล้านสี่แสน🔷บาทขณะที่ภาพรวมวันที่🔷ห้า🔷ถึง🔷สิบเอ็ด🔷เมษายนที่ผ่านมาพบว่ามีผู้เสียหายแจ้งความผ่านระบบออนไลน์รวมกว่า🔷เจ็ดพันสามร้อย🔷คดีความเสียหายรวมกว่า🔷สามร้อยเก้าสิบเจ็ด🔷ล้านบาทในจำนวนนี้เป็นคดีหลอกลงทุนสร้างความเสียหายมากที่สุดรวมกว่า🔷สองร้อยสิบสาม🔷ล้านบาท
 
-### Typhoon — Strict CER 18.3946%, Content CER 0.3417%
+### Typhoon — Strict CER 18.3946%, Content CER 0.3394%
 
 > ศูนย์ต่อต้านการฉ้อโกงออนไลน์นะคะส่งข้อมูลให้ตำรวจตามจับกุมวัยรุ่นค่ะที่มีการถอนเงินหน้าธนาคารเพื่อส่งไปให้บัญชีม้านะคะ ขณะที่ภาพรวมตลอดทั้งสัปดาห์มีคนถูกหลอกโอนเงินรวมความเสียหายกว่า🔷สามร้อยเก้าสิบเจ็ด🔷ล้านบาท นี่เป็นหนึ่งในคดีที่ศูนย์ต่อต้านการฉ้อโกงออนไลน์ประสานตำรวจในพื้นที่ <mark>สภ</mark> 🟥เชียงดาว จังหวัดเชียงใหม่ จับกุมวัยรุ่นชายอายุ🔷สิบเจ็ด🔷และ🔷สิบเก้า🔷ปี หลังรับงานกดเงินสดถอนเงินให้กับแก๊งสแกมเมอร์จากธนาคารแห่งหนึ่ง เบื้องต้นพบของกลางเงินสด 🔷หนึ่งแสนห้าหมื่น🔷บาท สมุดบัญชีธนาคาร บัตร ATM และโทรศัพท์มือถือ🔷สอง🔷เครื่อง สอบถามผู้ต้องหารับว่าได้รับงานกด ถอนเงินให้กับชายวัยรุ่นอีกคนอายุ🔷สิบเก้า🔷ปี ซึ่งก่อนหน้านี้ก็เพิ่งไปถอนเงินสด🔷หนึ่งแสน🔷บาทจากพื้นที่ สภ.นาหวายให้ไป <mark>เลิก</mark> 🟥กับค่าตอบแทน🔷ห้าพัน🔷บาท ขณะที่ภาพรวมมีการจับกุมผู้ต้องหารวม🔷สิบเอ็ด🔷คดียึดของกลางเงินสดได้รวมกว่า🔷ห้าล้านสี่แสน🔷บาท ขณะที่ภาพรวมวันที่🔷ห้า🔷ถึง🔷สิบเอ็ด🔷เมษายนที่ผ่านมา พบว่ามีผู้เสียหายแจ้งความผ่านระบบออนไลน์รวมกว่า🔷เจ็ดพันสามร้อย🔷คดี ความเสียหายรวมกว่าสามร้อยเก้าสิบเจ็ดล้านบาท ในจำนวนนี้เป็นคดีหลอกลงทุนสร้างความเสียหายมากที่สุดรวมกว่า🔷สองร้อยสิบสาม🔷ล้านบาท
 
@@ -106,7 +108,7 @@ The Thai text below is intentionally kept unchanged because it is the gold refer
 ## 6. Published files
 
 - [typhoon_asr_inference_example.ipynb](typhoon_asr_inference_example.ipynb) — a Typhoon CUDA example using the placeholder path `sample_audio.mp3`, executed locally before publication with its example output embedded.
-- [content_cer.py](content_cer.py) — dependency-free example of the auditable Strict CER → Content CER scoring process.
+- [content_cer.py](content_cer.py) — dependency-free grammar-based Thai-number conversion and auditable Strict CER → Content CER scoring.
 - [Qwen3-ASR-1.7B model card](https://huggingface.co/Qwen/Qwen3-ASR-1.7B)
 - [Pathumma model card](https://huggingface.co/nectec/Pathumma-whisper-th-large-v3)
 - [Typhoon model card](https://huggingface.co/typhoon-ai/typhoon-asr-realtime)
