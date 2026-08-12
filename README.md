@@ -37,6 +37,20 @@ Score definitions:
 - **Strict CER** requires every character to match the reference, including number representation (`397` versus `สามร้อยเก้าสิบเจ็ด`), abbreviations, punctuation, and the closing tag.
 - **Content CER** measures spoken content. The same clip-specific normalization is applied to every model: Thai number words are converted to the corresponding Arabic values in the reference, thousands separators are removed, `ํา` and `ำ` are treated as equivalent, and the closing tag `7HD TV เพื่อคุณ` is excluded.
 
+### Reproduce Strict CER and Content CER
+
+[`content_cer.py`](content_cer.py) is a dependency-free CLI example that calculates both scores from UTF-8 reference and hypothesis files. It performs Strict CER first, then applies declared Content CER transformations. The built-in number map contains only forms observed in this test clip, so extend it with `--number-map-json` for another domain.
+
+```bash
+python content_cer.py \
+  --reference-file reference.txt \
+  --hypothesis-file typhoon_output.txt \
+  --reference-suffix "7HD TV เพื่อคุณ" \
+  --show-normalized
+```
+
+For a hypothesis that has an extra spoken sign-off, add (for example) `--hypothesis-suffix "โอ้โห"`. The program prints JSON with `strict_cer`, `content_cer`, and the exact rules used. Preserve the raw transcript separately; do not silently apply number conversion in production.
+
 ## 3. CUDA cold model start time
 
 | Model | Cold model load | Decode | Total cold start |
@@ -92,6 +106,7 @@ The Thai text below is intentionally kept unchanged because it is the gold refer
 ## 6. Published files
 
 - [typhoon_asr_inference_example.ipynb](typhoon_asr_inference_example.ipynb) — a Typhoon CUDA example using the placeholder path `sample_audio.mp3`, executed locally before publication with its example output embedded.
+- [content_cer.py](content_cer.py) — dependency-free example of the auditable Strict CER → Content CER scoring process.
 - [Qwen3-ASR-1.7B model card](https://huggingface.co/Qwen/Qwen3-ASR-1.7B)
 - [Pathumma model card](https://huggingface.co/nectec/Pathumma-whisper-th-large-v3)
 - [Typhoon model card](https://huggingface.co/typhoon-ai/typhoon-asr-realtime)
